@@ -46,15 +46,23 @@ public class ExcelJsonZJJ {
 			//准备对中间件返回的数据进行处理
 			Map<String, Set<Config>> fields = cs.tablesAndFields.get(entry.getKey());//处理当前表（数据集）的每个返回字段内容
 			
-			//讲中间件返回的数据拼接到JSON上
+			//处理中间件返回的一条结果，将中间件返回的数据拼接到JSON上
 			for(Entry<String, Set<Config>> fieldsEntry : fields.entrySet()) {
 				fieldsEntry.getKey();//以此作为条件从中间件的返回数据里获取相应数据
 				for(Config config : fieldsEntry.getValue()) {
 					if(config.jsonParentName.contentEquals(JSON_DATA_NAME)) {
 						cs.jsonDataMap.put(config.jsonFieldName, config.dataCodeName+"-value");//填中间件获取的数据
 					} else {
-						Map<String, String> subJsonMap = (Map<String, String>)cs.jsonDataMap.get(config.jsonParentName);
-						subJsonMap.put(config.jsonFieldName, config.dataCodeName+"-value");//填中间件获取的数据
+						List<TreeMap<String, String>> subSubListMap = (List<TreeMap<String, String>>)cs.jsonDataMap.get(config.jsonParentName);
+						
+						if(subSubListMap.size()==1 && subSubListMap.get(0).get(config.jsonFieldName)==null) {
+							subSubListMap.get(0).put(config.jsonFieldName, config.dataCodeName+"-value");
+						} else {
+							TreeMap<String, String> subJsonMap = new TreeMap<String, String>();
+							subJsonMap.put(config.jsonFieldName, config.dataCodeName+"-value");//填中间件获取的数据
+							subSubListMap.add(subJsonMap);
+						}
+
 					}
 				}
 			}
@@ -73,8 +81,6 @@ public class ExcelJsonZJJ {
 		return gson.toJson(messageList, new TypeToken<List<Message>>() {}.getType());
 	}
 	
-
-
 	static class ConfigSet {
 		List<Config> list = new ArrayList<Config>();
 		Map<String, Map<String,Set<Config>>> tablesAndFields = new HashMap<String,Map<String,Set<Config>>>();
@@ -108,11 +114,20 @@ public class ExcelJsonZJJ {
 				if(config.jsonParentName.contentEquals(JSON_DATA_NAME)) {//如果parent是ROOT，parent是ROOT的有两种
 					if(config.levelType==1)
 						jsonDataMap.put(config.jsonFieldName, "");
-					else 
-						jsonDataMap.put(config.jsonFieldName, new TreeMap<String, String>());
+					else {
+						List<TreeMap<String, String>> list = new ArrayList<TreeMap<String, String>>();
+						jsonDataMap.put(config.jsonFieldName, list);
+					}
 				} else {//如果parent不是ROOT，需要在 rootSubMap中找
-					TreeMap<String, String> subSubMap = (TreeMap<String, String>)jsonDataMap.get(config.jsonParentName);
-					subSubMap.put(config.jsonFieldName, "");
+					List<TreeMap<String, String>> subSubListMap = (List<TreeMap<String, String>>)jsonDataMap.get(config.jsonParentName);
+					if(subSubListMap.isEmpty()) {
+						TreeMap<String, String> subSubMap = new TreeMap<String, String>();
+						subSubMap.put(config.jsonFieldName, null);
+						subSubListMap.add(subSubMap);
+					} else {
+						TreeMap<String, String> subSubMap = subSubListMap.get(0);
+						subSubMap.put(config.jsonFieldName, null);
+					}
 				}
 			}
 			
