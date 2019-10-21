@@ -7,31 +7,114 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableMap;
 import java.util.Set;
+import java.util.TreeMap;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 
 public class ExcelJsonZJJ {
 	
 	private static final String SELECT = "select";
 	private static final String FROM = "from";
+	
+	private static final String JSON_DATA_NAME = "data";
+	
+	@SuppressWarnings("unchecked")
+	public static void main(String[] args) {
+		ConfigSet cs = new ConfigSet();
+		
+		//模拟从Excel解析出来的数据
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9996","B030004","zjlx","data",1));
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9996","B030005","zjhm","data",1));
+		
+		cs.addConfig(new Config("","","","ltgj","data",2));
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9996","B020005","hm","ltgj",1));
+		
+		cs.addConfig(new Config("","","","jtgj","data",2));
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9990","C030001","lb","jtgj",1));
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9990","C030002","pzhm","jtgj",1));
+		
+		//构造查询中间件的SQL
+		Map<String, String> buildAllTablesSqlString = cs.buildAllTablesSqlString();
+		
+		for(Entry<String, String> entry : buildAllTablesSqlString.entrySet()) {
+			System.out.println("table ["+entry.getKey()+"], sql ["+entry.getValue()+"]");//执行中间件查询SQL
+			
+			//准备对中间件返回的数据进行处理
+			Map<String, Set<Config>> fields = cs.tablesAndFields.get(entry.getKey());//处理当前表（数据集）的每个返回字段内容
+			
+			//讲中间件返回的数据拼接到JSON上
+			for(Entry<String, Set<Config>> fieldsEntry : fields.entrySet()) {
+				fieldsEntry.getKey();//以此作为条件从中间件的返回数据里获取相应数据
+				for(Config config : fieldsEntry.getValue()) {
+					if(config.jsonParentName.contentEquals(JSON_DATA_NAME)) {
+						cs.jsonDataMap.put(config.jsonFieldName, config.dataCodeName+"-value");//填中间件获取的数据
+					} else {
+						Map<String, String> subJsonMap = (Map<String, String>)cs.jsonDataMap.get(config.jsonParentName);
+						subJsonMap.put(config.jsonFieldName, config.dataCodeName+"-value");//填中间件获取的数据
+					}
+				}
+			}
+		}
+		
+		List<Message> messageList = new ArrayList<Message>();
+		messageList.add(new Message("", "", cs.jsonDataMap));
+		String buildJsonMessage = buildJsonMessage(messageList);
+		
+		System.out.println(buildJsonMessage);
+	}
+	
+	public static String buildJsonMessage(List<Message> messageList) {
+		Gson gson = new GsonBuilder().create();
+
+		return gson.toJson(messageList, new TypeToken<List<Message>>() {}.getType());
+	}
+	
+
 
 	static class ConfigSet {
 		List<Config> list = new ArrayList<Config>();
 		Map<String, Map<String,Set<Config>>> tablesAndFields = new HashMap<String,Map<String,Set<Config>>>();
+		 NavigableMap<String, Object> jsonDataMap = new TreeMap<String, Object>();
 		
+		@SuppressWarnings("unchecked")
 		public ConfigSet addConfig(Config config) {
+			
 			String dataSetNameSpaceName = config.getDataSetNameSpaceName();
 			String dataSetName = config.getDataSetName();
-			String fullTableName = dataSetNameSpaceName+"."+dataSetName;
-			Map<String,Set<Config>> fields = tablesAndFields.get(fullTableName);
-			if(null==fields) {
-				fields = new HashMap<String, Set<Config>>();
+			
+			//构造查询中间件的数据结构
+			if(null!=dataSetNameSpaceName && null!=dataSetName && !dataSetName.isEmpty() && !dataSetNameSpaceName.isEmpty()) {
+				String fullTableName = dataSetNameSpaceName+"."+dataSetName;
+				Map<String,Set<Config>> fields = tablesAndFields.get(fullTableName);
+				if(null==fields) {
+					fields = new HashMap<String, Set<Config>>();
+				}
+				Set<Config> oneFieldConfigs = fields.get(config.dataCodeName);//一个 数据元素可能映射给多个json属性
+				if(null==oneFieldConfigs) {
+					oneFieldConfigs = new HashSet<Config>();
+				}
+				oneFieldConfigs.add(config);
+				fields.put(config.dataCodeName, oneFieldConfigs);
+				tablesAndFields.put(fullTableName, fields);
 			}
-			Set<Config> oneFieldConfigs = fields.get(config.dataCodeName);//һ�� ����Ԫ�ؿ���ӳ������json����
-			if(null==oneFieldConfigs) {
-				oneFieldConfigs = new HashSet<Config>();
+			
+			//构造 拼接 JSON 的数据结构
+			if(null!=config.jsonParentName && !config.jsonParentName.isEmpty()) {//必须有父节点
+				
+				if(config.jsonParentName.contentEquals(JSON_DATA_NAME)) {//如果parent是ROOT，parent是ROOT的有两种
+					if(config.levelType==1)
+						jsonDataMap.put(config.jsonFieldName, "");
+					else 
+						jsonDataMap.put(config.jsonFieldName, new TreeMap<String, String>());
+				} else {//如果parent不是ROOT，需要在 rootSubMap中找
+					TreeMap<String, String> subSubMap = (TreeMap<String, String>)jsonDataMap.get(config.jsonParentName);
+					subSubMap.put(config.jsonFieldName, "");
+				}
 			}
-			oneFieldConfigs.add(config);
-			tablesAndFields.put(fullTableName, fields);
 			
 			return this;
 		}
@@ -75,6 +158,7 @@ public class ExcelJsonZJJ {
 		}
 		
 	}
+	
 	static class Config {
 		
 		public String getDataSetNameSpaceName() {
@@ -110,13 +194,32 @@ public class ExcelJsonZJJ {
 		private String dataSetNameSpaceName;
 		private String dataSetName ;
 		private String dataCodeName;
-		private String jsonFieldName;
+		private String jsonFieldName;//对应Excel“字段名称”
 		private String jsonParentName;
+		private int levelType;
+
+
+		public Config(String dataSetNameSpaceName, String dataSetName, String dataCodeName, String jsonFieldName,
+				String jsonParentName, int levelType) {
+			super();
+			this.dataSetNameSpaceName = dataSetNameSpaceName;
+			this.dataSetName = dataSetName;
+			this.dataCodeName = dataCodeName;
+			this.jsonFieldName = jsonFieldName;
+			this.jsonParentName = jsonParentName;
+			this.levelType = levelType;
+		}
 		@Override
 		public String toString() {
 			return "Config [dataSetNameSpaceName=" + dataSetNameSpaceName + ", dataSetName=" + dataSetName
 					+ ", dataCodeName=" + dataCodeName + ", jsonFieldName=" + jsonFieldName + ", jsonParentName="
-					+ jsonParentName + "]";
+					+ jsonParentName + ", levelType=" + levelType + "]";
+		}
+		public int getLevelType() {
+			return levelType;
+		}
+		public void setLevelType(int levelType) {
+			this.levelType = levelType;
 		}
 		@Override
 		public int hashCode() {
@@ -126,9 +229,47 @@ public class ExcelJsonZJJ {
 		public boolean equals(Object obj) {
 			return this.toString().equals(obj);
 		}
-		
-		
 	}	
+	
+	static class Message {
+		private String objid;
+		private String objtype;
+		private NavigableMap<String, Object> data;
+		
+		public String getObjid() {
+			return objid;
+		}
+
+		public void setObjid(String objid) {
+			this.objid = objid;
+		}
+
+		public String getObjtype() {
+			return objtype;
+		}
+
+		public void setObjtype(String objtype) {
+			this.objtype = objtype;
+		}
+
+		public NavigableMap<String, Object> getData() {
+			return data;
+		}
+
+		public void setData(NavigableMap<String, Object> data) {
+			this.data = data;
+		}
+
+		public Message(String objid, String objtype, NavigableMap<String, Object> data) {
+			super();
+			this.objid = objid;
+			this.objtype = objtype;
+			this.data = data.descendingMap();
+		}
+
+
+	}
+	
 }
 
 
