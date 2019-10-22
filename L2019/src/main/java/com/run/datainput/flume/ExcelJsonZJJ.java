@@ -10,6 +10,7 @@ import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -37,6 +38,13 @@ public class ExcelJsonZJJ {
 		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9990","C030001","lb","jtgj",1));
 		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9990","C030002","pzhm","jtgj",1));
 		
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9991","C030001","lb","jtgj",1));
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9991","C030002","pzhm","jtgj",1));
+		
+		
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9992","C030001","lb","jtgj",1));
+		cs.addConfig(new Config("OBJ003","WA_OBJECT_Z002_9991","C030002","pzhm","jtgj",1));
+		
 		//构造查询中间件的SQL
 		Map<String, String> buildAllTablesSqlString = cs.buildAllTablesSqlString();
 		
@@ -55,14 +63,14 @@ public class ExcelJsonZJJ {
 					} else {
 						List<TreeMap<String, String>> subSubListMap = (List<TreeMap<String, String>>)cs.jsonDataMap.get(config.jsonParentName);
 						
-						if(subSubListMap.size()==1 && subSubListMap.get(0).get(config.jsonFieldName)==null) {
-							subSubListMap.get(0).put(config.jsonFieldName, config.dataCodeName+"-value");
+						TreeMap<String, String> treeMap = subSubListMap.get(subSubListMap.size()-1);
+						if(treeMap.get(config.jsonFieldName)==null) {
+							treeMap.put(config.jsonFieldName, config.dataCodeName+"-value");
 						} else {
 							TreeMap<String, String> subJsonMap = new TreeMap<String, String>();
 							subJsonMap.put(config.jsonFieldName, config.dataCodeName+"-value");//填中间件获取的数据
 							subSubListMap.add(subJsonMap);
 						}
-
 					}
 				}
 			}
@@ -115,17 +123,17 @@ public class ExcelJsonZJJ {
 					if(config.levelType==1)
 						jsonDataMap.put(config.jsonFieldName, "");
 					else {
-						List<TreeMap<String, String>> list = new ArrayList<TreeMap<String, String>>();
-						jsonDataMap.put(config.jsonFieldName, list);
+						ArrayList<TreeMap<String, String>> treeSet = new ArrayList<TreeMap<String, String>>();
+						jsonDataMap.put(config.jsonFieldName, treeSet);
 					}
-				} else {//如果parent不是ROOT，需要在 rootSubMap中找
-					List<TreeMap<String, String>> subSubListMap = (List<TreeMap<String, String>>)jsonDataMap.get(config.jsonParentName);
-					if(subSubListMap.isEmpty()) {
+				} else {//如果parent不是ROOT，需要在 rootSubMap中找，这个过程相当于在预制模板
+					ArrayList<TreeMap<String, String>> subSubListMap = (ArrayList<TreeMap<String, String>>)jsonDataMap.get(config.jsonParentName);
+					if(subSubListMap.isEmpty()) {//第一个属性
 						TreeMap<String, String> subSubMap = new TreeMap<String, String>();
 						subSubMap.put(config.jsonFieldName, null);
 						subSubListMap.add(subSubMap);
-					} else {
-						TreeMap<String, String> subSubMap = subSubListMap.get(0);
+					} else {//其他属性
+						TreeMap<String, String> subSubMap = subSubListMap.get(0);//只有一个
 						subSubMap.put(config.jsonFieldName, null);
 					}
 				}
